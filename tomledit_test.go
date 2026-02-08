@@ -40,6 +40,29 @@ func mustFormat(t *testing.T, doc *tomledit.Document, more ...string) {
 	}
 }
 
+const testDoc11 = `
+# Multi-line inline table with trailing comma
+point = {
+    x = 1,
+    y = 2,
+}
+
+# Escape sequences
+hex = "Jos\xE9"
+esc = "\e[31mred\e[0m"
+
+# Time without seconds
+lt = 07:32
+ldt = 2024-01-15T14:30
+odt = 2024-01-15 14:30Z
+
+[settings]
+config = {
+    timeout = 30,
+    retries = 3,
+}
+`
+
 const testDoc = `
 # free 1 line 1
 # free 1 line 2
@@ -295,6 +318,158 @@ func TestEdit(t *testing.T) {
 			want:  "# stay1\n\na = 1\n\n# stay2\n\na = 2\nm = 3\n\n# rc\nr = 4\n\n# xc\nx = 5",
 			edit: func(doc *tomledit.Document) {
 				transform.SortKeyValuesByName(doc.Global.Items)
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			doc := mustParse(t, test.input)
+			test.edit(doc)
+
+			var buf bytes.Buffer
+			if err := tomledit.Format(&buf, doc); err != nil {
+				t.Fatalf("Format: %v", err)
+			}
+			got := strings.TrimSpace(buf.String())
+			if diff := cmp.Diff(test.want, got); diff != "" {
+				t.Errorf("Wrong output: (-want, +got)\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestFormat11(t *testing.T) {
+	mustFormat(t, mustParse(t, testDoc11))
+
+	t.Run("MultilineInline", func(t *testing.T) {
+		const input = "x = {\n    a = 1,\n    b = 2,\n}"
+		doc := mustParse(t, input)
+		var buf bytes.Buffer
+		if err := tomledit.Format(&buf, doc); err != nil {
+			t.Fatalf("Format failed: %v", err)
+		}
+		got := strings.TrimSpace(buf.String())
+		if !strings.Contains(got, "a = 1") || !strings.Contains(got, "b = 2") {
+			t.Errorf("Formatted output missing expected keys:\n%s", got)
+		}
+	})
+
+	t.Run("EscapeSequences", func(t *testing.T) {
+		const input = "hex = \"Jos\\xE9\"\nesc = \"\\e[0m\""
+		doc := mustParse(t, input)
+		var buf bytes.Buffer
+		if err := tomledit.Format(&buf, doc); err != nil {
+			t.Fatalf("Format failed: %v", err)
+		}
+		got := strings.TrimSpace(buf.String())
+		if !strings.Contains(got, `\xE9`) {
+			t.Errorf("Formatted output missing hex escape:\n%s", got)
+		}
+		if !strings.Contains(got, `\e`) {
+			t.Errorf("Formatted output missing \\e escape:\n%s", got)
+		}
+	})
+}
+
+func TestScan11(t *testing.T) {
+	doc := mustParse(t, testDoc11)
+
+	t.Run("KeyValues", func(t *testing.T) {
+		var keys []string
+		doc.Scan(func(key parser.Key, elt *tomledit.Entry) bool {
+			keys = append(keys, key.String())
+			return true
+		})
+
+		want := []string{
+			// Global mappings.
+			"point", "point.x", "point.y",
+			"hex", "esc",
+			"lt", "ldt", "odt",
+
+			// [settings] section.
+			"settings", "settings.config", "settings.config.timeout", "settings.config.retries",
+		}
+		if diff := cmp.Diff(want, keys); diff != "" {
+			t.Errorf("Scan reported the wrong keys: (-want, +got)\n%s", diff)
+		}
+	})
+
+	t.Run("Find", func(t *testing.T) {
+		// Keys inside multi-line inline tables should be findable.
+		for _, key := range [][]string{
+			{"point", "x"},
+			{"point", "y"},
+			{"settings", "config", "timeout"},
+			{"settings", "config", "retries"},
+		} {
+			if e := doc.First(key...); e == nil {
+				t.Errorf("First(%v): not found", key)
+			}
+		}
+	})
+
+	t.Run("TimeValues", func(t *testing.T) {
+		// Verify the time/datetime values were parsed.
+		for _, key := range [][]string{{"lt"}, {"ldt"}, {"odt"}} {
+			e := doc.First(key...)
+			if e == nil {
+				t.Errorf("First(%v): not found", key)
+			}
+		}
+	})
+}
+
+func TestEdit11(t *testing.T) {
+	tests := []struct {
+		desc, input string
+		want        string
+		edit        func(*tomledit.Document)
+	}{
+		{
+			desc:  "replace in multiline inline",
+			input: "x = {\n    a = 1,\n    b = 2,\n}",
+			want:  "x = {\n    a = 99,\n    b = 2,\n}",
+			edit: func(doc *tomledit.Document) {
+				doc.First("x", "a").Value = parser.MustValue("99")
+			},
+		},
+		{
+			desc:  "remove from trailing comma inline",
+			input: "x = {a = 1, b = 2,}",
+			want:  "x = {a = 1}",
+			edit: func(doc *tomledit.Document) {
+				doc.First("x", "b").Remove()
+			},
+		},
+		{
+			desc:  "add to multiline inline",
+			input: "x = {\n    a = 1,\n}",
+			want:  "x = {\n    a = 1, c = 3,\n}",
+			edit: func(doc *tomledit.Document) {
+				kv := doc.First("x").KeyValue
+				tab := kv.Value.X.(parser.Inline)
+				tab = append(tab, &parser.KeyValue{
+					Name:  parser.Key{"c"},
+					Value: parser.MustValue("3"),
+				})
+				kv.Value.X = tab
+			},
+		},
+		{
+			desc:  "replace hex escape value",
+			input: "key = \"\\xE9\"",
+			want:  "key = \"replaced\"",
+			edit: func(doc *tomledit.Document) {
+				doc.First("key").Value = parser.MustValue(`"replaced"`)
+			},
+		},
+		{
+			desc:  "replace time without seconds",
+			input: "t = 14:30",
+			want:  "t = 15:45:00",
+			edit: func(doc *tomledit.Document) {
+				doc.First("t").Value = parser.MustValue("15:45:00")
 			},
 		},
 	}
