@@ -109,6 +109,16 @@ frob = 2021-12-01
 
 		// TOML 1.1: \e escape in basic strings.
 		{`"\e[0m"`, []result{{scanner.String, `"\e[0m"`}}},
+
+		// TOML 1.1: time without seconds.
+		{`07:32`, []result{{scanner.LocalTime, "07:32"}}},
+		{`07:32:00`, []result{{scanner.LocalTime, "07:32:00"}}},
+
+		// TOML 1.1: datetime without seconds.
+		{`2024-01-15T14:30`, []result{{scanner.LocalDateTime, "2024-01-15T14:30"}}},
+		{`2024-01-15T14:30Z`, []result{{scanner.DateTime, "2024-01-15T14:30Z"}}},
+		{`2024-01-15 14:30Z`, []result{{scanner.DateTime, "2024-01-15 14:30Z"}}},
+		{`2024-01-15T14:30+01:00`, []result{{scanner.DateTime, "2024-01-15T14:30+01:00"}}},
 	}
 
 	for _, test := range tests {

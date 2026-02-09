@@ -96,6 +96,11 @@ func TestItems(t *testing.T) {
 		{`x = "\xE9"` + "\n", []result{{keyValueType, `x = "\xE9"`}}},
 		{`x = "\e[0m"` + "\n", []result{{keyValueType, `x = "\e[0m"`}}},
 
+		// TOML 1.1: Time without seconds.
+		{"x = 07:32\n", []result{{keyValueType, "x = 07:32"}}},
+		{"x = 2024-01-15T14:30\n", []result{{keyValueType, "x = 2024-01-15T14:30"}}},
+		{"x = 2024-01-15T14:30Z\n", []result{{keyValueType, "x = 2024-01-15T14:30Z"}}},
+
 		// Headings.
 		{`[ a . b . c ]`, []result{{headingType, `[a.b.c]`}}},
 		{`[ a . '' . c ]`, []result{{headingType, `[a."".c]`}}},

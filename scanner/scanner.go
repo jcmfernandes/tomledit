@@ -528,13 +528,13 @@ var (
 	floatRE  = regexp.MustCompile(`^[-+]?([0-9_]+(\.[0-9_]+)?([eE][-+]?[0-9_]+)?)$`)
 	sfloatRE = regexp.MustCompile(`^[-+]?(inf|nan)$`)
 	sepCheck = regexp.MustCompile(`(?:^_)|(?:__+)|(?:_$)`)
-	timeRE   = regexp.MustCompile(`^\d{2}:\d{2}:\d{2}(\.\d+)?$`)
+	timeRE   = regexp.MustCompile(`^\d{2}:\d{2}(?::\d{2})?(\.\d+)?$`)
 	dateRE   = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 	// Date/time literals. Match 1 is date, match 2 is time, match 3 is offset.
 	// If offset is missing, it is a "local" date/time.
 	// If time is also missing it is a local date only.
-	dateTimeRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})([tT ]\d{2}:\d{2}:\d{2}(?:\.\d+)?([zZ]|[-+]\d{2}:\d{2})?)?$`)
+	dateTimeRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})([tT ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?([zZ]|[-+]\d{2}:\d{2})?)?$`)
 )
 
 func (s *Scanner) rune() (rune, error) {

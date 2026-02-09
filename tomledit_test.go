@@ -53,6 +53,11 @@ point = { # comment 1
 hex = "Jos\xE9"
 esc = "\e[31mred\e[0m"
 
+# Time without seconds
+lt = 07:32
+ldt = 2024-01-15T14:30
+odt = 2024-01-15 14:30Z
+
 [settings]
 config = {
     timeout = 30,
@@ -465,6 +470,7 @@ func TestScan11(t *testing.T) {
 			// Global mappings.
 			"point", "point.x", "point.y",
 			"hex", "esc",
+			"lt", "ldt", "odt",
 
 			// [settings] section.
 			"settings", "settings.config", "settings.config.timeout", "settings.config.retries",
@@ -483,6 +489,16 @@ func TestScan11(t *testing.T) {
 			{"settings", "config", "retries"},
 		} {
 			if e := doc.First(key...); e == nil {
+				t.Errorf("First(%v): not found", key)
+			}
+		}
+	})
+
+	t.Run("TimeValues", func(t *testing.T) {
+		// Verify the time/datetime values were parsed.
+		for _, key := range [][]string{{"lt"}, {"ldt"}, {"odt"}} {
+			e := doc.First(key...)
+			if e == nil {
 				t.Errorf("First(%v): not found", key)
 			}
 		}
@@ -551,6 +567,14 @@ func TestEdit11(t *testing.T) {
 			want:  "key = \"replaced\"",
 			edit: func(doc *tomledit.Document) {
 				doc.First("key").Value = parser.MustValue(`"replaced"`)
+			},
+		},
+		{
+			desc:  "replace time without seconds",
+			input: "t = 14:30",
+			want:  "t = 15:45:00",
+			edit: func(doc *tomledit.Document) {
+				doc.First("t").Value = parser.MustValue("15:45:00")
 			},
 		},
 	}
