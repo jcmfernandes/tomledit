@@ -11,15 +11,29 @@ import (
 	"github.com/creachadair/tomledit/scanner"
 )
 
-// Format formats the specified document with default options.
-func Format(w io.Writer, doc *Document) error {
-	var out Formatter
-	return out.Format(w, doc)
+//go:generate go tool github.com/bckground/go-options -new=false -namespace=FormatOptions -option=FormatOption -output=zz_generated.formatconfig.options.go formatConfig
+type formatConfig struct {
+	Indent int
 }
 
-// Formatter defines options for formatting a TOML document.  The zero value is
-// ready for use with default options (of which there are presently none).
-type Formatter struct{}
+// Format formats the specified document with default options.
+func Format(w io.Writer, doc *Document, opts ...FormatOption) error {
+	config := formatConfig{
+		Indent: 4,
+	}
+	err := applyFormatConfigOptions(&config, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to create config from options: %w", err)
+	}
+
+	formatter := Formatter{Indent: config.Indent}
+	return formatter.Format(w, doc)
+}
+
+// Formatter defines options for formatting a TOML document.
+type Formatter struct {
+	Indent int
+}
 
 func (f Formatter) Format(w io.Writer, doc *Document) error {
 	var all []parser.Item
@@ -166,7 +180,10 @@ func (f Formatter) indentInline(inline parser.Inline, w io.Writer, prefix string
 	}
 
 	if shouldIndentInline(inline, valueLine) {
-		inner := prefix + "    "
+		inner := prefix
+		if f.Indent > 0 {
+			inner += strings.Repeat(" ", f.Indent)
+		}
 		fmt.Fprint(w, "{")
 		if inline.Trailer != "" {
 			fmt.Fprint(w, "  ", parser.CleanTrailer(inline.Trailer))
