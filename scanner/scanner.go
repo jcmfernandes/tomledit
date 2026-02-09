@@ -348,7 +348,7 @@ func (s *Scanner) scanBasicString(open rune) error {
 		if esc {
 			// We are awaiting the completion of a \-escape.
 			switch ch {
-			case '\\', '\t', ' ', 'b', 'f', 'n', 'r', 't':
+			case '\\', '\t', ' ', 'b', 'e', 'f', 'n', 'r', 't':
 				s.buf.WriteByte(byte(ch))
 			case 'x':
 				s.buf.WriteByte(byte(ch))

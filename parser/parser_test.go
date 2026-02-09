@@ -92,8 +92,9 @@ func TestItems(t *testing.T) {
 		// TOML 1.1: Trailing commas in inline tables.
 		{"x = {a = 1, b = 2,}\n", []result{{keyValueType, `x = {a = 1, b = 2}`}}},
 
-		// TOML 1.1: Escape sequence \x.
+		// TOML 1.1: Escape sequences \x and \e.
 		{`x = "\xE9"` + "\n", []result{{keyValueType, `x = "\xE9"`}}},
+		{`x = "\e[0m"` + "\n", []result{{keyValueType, `x = "\e[0m"`}}},
 
 		// Headings.
 		{`[ a . b . c ]`, []result{{headingType, `[a.b.c]`}}},

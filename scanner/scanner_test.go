@@ -106,6 +106,9 @@ frob = 2021-12-01
 		// TOML 1.1: \x hex escape in basic strings.
 		{`"\xE9"`, []result{{scanner.String, `"\xE9"`}}},
 		{`"Jos\xE9"`, []result{{scanner.String, `"Jos\xE9"`}}},
+
+		// TOML 1.1: \e escape in basic strings.
+		{`"\e[0m"`, []result{{scanner.String, `"\e[0m"`}}},
 	}
 
 	for _, test := range tests {
@@ -156,6 +159,10 @@ func TestEscape(t *testing.T) {
 
 		{"😍🐈\n", "😍🐈\\n", false},
 		{"😍🐈\n", "😍🐈\n", true},
+
+		// TOML 1.1: ESC → \e.
+		{"\x1b", "\\e", false},
+		{"\x1b", "\\e", true},
 	}
 	for _, test := range tests {
 		var got string
@@ -188,6 +195,9 @@ func TestUnescape(t *testing.T) {
 		{`\xE9`, "\xe9"},       // \xE9 → raw byte 0xE9
 		{`Jos\xE9`, "Jos\xe9"}, // José (raw byte)
 		{`\x41`, "A"},          // \x41 → A
+
+		// TOML 1.1: \e escape (ESC = 0x1B).
+		{`\e[0m`, "\x1b[0m"},
 	}
 	for _, test := range tests {
 		bits, err := scanner.Unescape([]byte(test.input))

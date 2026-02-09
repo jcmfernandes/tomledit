@@ -15,6 +15,7 @@ var controlEsc = [...]byte{
 	'\n': 'n',
 	'\r': 'r',
 	'\t': 't',
+	0x1b: 'e',
 	' ':  ' ', // sentinel
 }
 
@@ -116,6 +117,8 @@ func Unescape(src []byte) ([]byte, error) {
 			dec.WriteString("\\\n")
 		case 'b':
 			dec.WriteByte('\b')
+		case 'e':
+			dec.WriteByte(0x1b)
 		case 'f':
 			dec.WriteByte('\f')
 		case 'n':

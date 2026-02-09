@@ -51,6 +51,7 @@ point = { # comment 1
 
 # Escape sequences
 hex = "Jos\xE9"
+esc = "\e[31mred\e[0m"
 
 [settings]
 config = {
@@ -431,10 +432,15 @@ func TestFormat11(t *testing.T) {
 						Name:  parser.Key{"hex"},
 						Value: parser.MustValue(`"Jos\xE9"`),
 					},
+					&parser.KeyValue{
+						Name:  parser.Key{"esc"},
+						Value: parser.MustValue(`"\e[0m"`),
+					},
 				},
 			},
 		}
-		const want = `hex = "Jos\xE9"` + "\n"
+		const want = `hex = "Jos\xE9"` + "\n" +
+			`esc = "\e[0m"` + "\n"
 		var buf bytes.Buffer
 		if err := tomledit.Format(&buf, doc); err != nil {
 			t.Fatalf("Format failed: %v", err)
@@ -458,7 +464,7 @@ func TestScan11(t *testing.T) {
 		want := []string{
 			// Global mappings.
 			"point", "point.x", "point.y",
-			"hex",
+			"hex", "esc",
 
 			// [settings] section.
 			"settings", "settings.config", "settings.config.timeout", "settings.config.retries",
