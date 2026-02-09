@@ -124,6 +124,17 @@ func Unescape(src []byte) ([]byte, error) {
 			dec.WriteByte('\r')
 		case 't':
 			dec.WriteByte('\t')
+		case 'x':
+			if len(src) < 2 {
+				return nil, errors.New("incomplete hex escape")
+			}
+			v, err := parseHex(src[:2])
+			if err != nil {
+				dec.WriteRune(utf8.RuneError)
+			} else {
+				dec.WriteByte(byte(v))
+			}
+			src = src[2:]
 		case 'u', 'U':
 			n := 4
 			if r == 'U' {

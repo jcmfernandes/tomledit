@@ -102,6 +102,10 @@ frob = 2021-12-01
 			{scanner.RInline, "}"}, {scanner.Comma, ","},
 			{scanner.String, `"four"`},
 		}},
+
+		// TOML 1.1: \x hex escape in basic strings.
+		{`"\xE9"`, []result{{scanner.String, `"\xE9"`}}},
+		{`"Jos\xE9"`, []result{{scanner.String, `"Jos\xE9"`}}},
 	}
 
 	for _, test := range tests {
@@ -179,6 +183,11 @@ func TestUnescape(t *testing.T) {
 		{`\u0113`, "\u0113"},                 // short Unicode escape
 		{`\U0001F60D`, "\U0001f60d"},         // long Unicode escape
 		{"a \\\nb c", "a \\\nb c"},           // newline at EOL
+
+		// TOML 1.1: \x hex escape.
+		{`\xE9`, "\xe9"},       // \xE9 → raw byte 0xE9
+		{`Jos\xE9`, "Jos\xe9"}, // José (raw byte)
+		{`\x41`, "A"},          // \x41 → A
 	}
 	for _, test := range tests {
 		bits, err := scanner.Unescape([]byte(test.input))
@@ -206,6 +215,10 @@ func TestUnescapeErrors(t *testing.T) {
 		{`\U`, badUnicode},
 		{`\U0113`, badUnicode},
 		{`\U01132fc`, badUnicode},
+
+		// TOML 1.1: incomplete \x hex escape.
+		{`\x`, "incomplete hex escape"},
+		{`\xG`, "incomplete hex escape"},
 	}
 	for _, test := range tests {
 		got, err := scanner.Unescape([]byte(test.input))

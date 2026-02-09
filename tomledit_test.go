@@ -49,6 +49,9 @@ point = { # comment 1
     y = 2, # comment 4
 } # comment 5
 
+# Escape sequences
+hex = "Jos\xE9"
+
 [settings]
 config = {
     timeout = 30,
@@ -419,6 +422,27 @@ func TestFormat11(t *testing.T) {
 			t.Errorf("Formatted output: (-want, +got)\n%s", diff)
 		}
 	})
+
+	t.Run("EscapeSequences", func(t *testing.T) {
+		doc := &tomledit.Document{
+			Global: &tomledit.Section{
+				Items: []parser.Item{
+					&parser.KeyValue{
+						Name:  parser.Key{"hex"},
+						Value: parser.MustValue(`"Jos\xE9"`),
+					},
+				},
+			},
+		}
+		const want = `hex = "Jos\xE9"` + "\n"
+		var buf bytes.Buffer
+		if err := tomledit.Format(&buf, doc); err != nil {
+			t.Fatalf("Format failed: %v", err)
+		}
+		if diff := cmp.Diff(want, buf.String()); diff != "" {
+			t.Errorf("Formatted output: (-want, +got)\n%s", diff)
+		}
+	})
 }
 
 func TestScan11(t *testing.T) {
@@ -434,6 +458,7 @@ func TestScan11(t *testing.T) {
 		want := []string{
 			// Global mappings.
 			"point", "point.x", "point.y",
+			"hex",
 
 			// [settings] section.
 			"settings", "settings.config", "settings.config.timeout", "settings.config.retries",
@@ -512,6 +537,14 @@ func TestEdit11(t *testing.T) {
 				tab.Items[1].Value.Trailer = "# comment 14"
 				// # comment 5 is the outer value's trailing comment.
 				kv.Value.Trailer = "# comment 15"
+			},
+		},
+		{
+			desc:  "replace hex escape value",
+			input: "key = \"\\xE9\"",
+			want:  "key = \"replaced\"",
+			edit: func(doc *tomledit.Document) {
+				doc.First("key").Value = parser.MustValue(`"replaced"`)
 			},
 		},
 	}

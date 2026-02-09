@@ -350,6 +350,11 @@ func (s *Scanner) scanBasicString(open rune) error {
 			switch ch {
 			case '\\', '\t', ' ', 'b', 'f', 'n', 'r', 't':
 				s.buf.WriteByte(byte(ch))
+			case 'x':
+				s.buf.WriteByte(byte(ch))
+				if err := s.readHex2(); err != nil {
+					return s.failf("invalid hex escape: %w", err)
+				}
 			case 'u', 'U':
 				s.buf.WriteByte(byte(ch))
 				if err := s.readHex4(); err != nil {
@@ -565,6 +570,20 @@ func (s *Scanner) readWhile(f func(rune) bool) (rune, error) {
 // readHex4 reads exactly 4 hexadecimal digits from the input.
 func (s *Scanner) readHex4() error {
 	for i := 0; i < 4; i++ {
+		ch, err := s.rune()
+		if err != nil {
+			return err
+		} else if !isHexDigit(ch) {
+			return fmt.Errorf("not a hex digit: %q", ch)
+		}
+		s.buf.WriteRune(ch)
+	}
+	return nil
+}
+
+// readHex2 reads exactly 2 hexadecimal digits from the input.
+func (s *Scanner) readHex2() error {
+	for i := 0; i < 2; i++ {
 		ch, err := s.rune()
 		if err != nil {
 			return err
