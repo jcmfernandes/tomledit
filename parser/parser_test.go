@@ -367,7 +367,7 @@ func TestInlineComments(t *testing.T) {
 
 	// "# c1" should be captured as the Trailer on the Inline.
 	if inline.Trailer != "# c1" {
-		t.Errorf("OpenComment: got %q, want %q", inline.Trailer, "# c1")
+		t.Errorf("Trailer: got %q, want %q", inline.Trailer, "# c1")
 	}
 
 	// x = 1: block should contain "# c2" only, no trailer.
