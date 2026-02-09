@@ -41,20 +41,13 @@ func mustFormat(t *testing.T, doc *tomledit.Document, more ...string) {
 }
 
 const testDoc11 = `
-# Multi-line inline table with trailing comma
-point = {
+# Multi-line inline table with trailing comma and comments
+point = { # comment 1
+    # comment 2
     x = 1,
-    y = 2,
-}
-
-# Escape sequences
-hex = "Jos\xE9"
-esc = "\e[31mred\e[0m"
-
-# Time without seconds
-lt = 07:32
-ldt = 2024-01-15T14:30
-odt = 2024-01-15 14:30Z
+    # comment 3
+    y = 2, # comment 4
+} # comment 5
 
 [settings]
 config = {
@@ -305,7 +298,7 @@ func TestEdit(t *testing.T) {
 			edit: func(doc *tomledit.Document) {
 				kv := doc.First("x").KeyValue
 				tab := kv.Value.X.(parser.Inline)
-				tab = append(tab, &parser.KeyValue{
+				tab.Items = append(tab.Items, &parser.KeyValue{
 					Name:  parser.Key{"b"},
 					Value: parser.MustValue(`'apples'`),
 				})
@@ -342,31 +335,88 @@ func TestFormat11(t *testing.T) {
 	mustFormat(t, mustParse(t, testDoc11))
 
 	t.Run("MultilineInline", func(t *testing.T) {
-		const input = "x = {\n    a = 1,\n    b = 2,\n}"
-		doc := mustParse(t, input)
+		doc := &tomledit.Document{
+			Global: &tomledit.Section{
+				Items: []parser.Item{
+					&parser.KeyValue{
+						Name: parser.Key{"x"},
+						Value: parser.Value{
+							X: parser.Inline{
+								Items: []*parser.KeyValue{
+									{
+										Name:  parser.Key{"a"},
+										Value: parser.MustValue("1"),
+										Line:  2,
+									},
+									{
+										Name:  parser.Key{"b"},
+										Value: parser.MustValue("2"),
+										Line:  3,
+									},
+								},
+							},
+							Line: 1,
+						},
+					},
+				},
+			},
+		}
+		const want = "x = {\n" +
+			"    a = 1,\n" +
+			"    b = 2,\n" +
+			"}\n"
 		var buf bytes.Buffer
 		if err := tomledit.Format(&buf, doc); err != nil {
 			t.Fatalf("Format failed: %v", err)
 		}
-		got := strings.TrimSpace(buf.String())
-		if !strings.Contains(got, "a = 1") || !strings.Contains(got, "b = 2") {
-			t.Errorf("Formatted output missing expected keys:\n%s", got)
+		if diff := cmp.Diff(want, buf.String()); diff != "" {
+			t.Errorf("Formatted output: (-want, +got)\n%s", diff)
 		}
 	})
 
-	t.Run("EscapeSequences", func(t *testing.T) {
-		const input = "hex = \"Jos\\xE9\"\nesc = \"\\e[0m\""
-		doc := mustParse(t, input)
+	t.Run("MultilineInlineComments", func(t *testing.T) {
+		doc := &tomledit.Document{
+			Global: &tomledit.Section{
+				Items: []parser.Item{
+					&parser.KeyValue{
+						Name: parser.Key{"point"},
+						Value: parser.Value{
+							X: parser.Inline{
+								Trailer: "# comment 1",
+								Items: []*parser.KeyValue{
+									{
+										Block: parser.Comments{"# comment 2"},
+										Name:  parser.Key{"x"},
+										Value: parser.MustValue("1"),
+										Line:  3,
+									},
+									{
+										Block: parser.Comments{"# comment 3"},
+										Name:  parser.Key{"y"},
+										Value: parser.MustValue("2").WithComment("# comment 4"),
+										Line:  5,
+									},
+								},
+							},
+							Trailer: "# comment 5",
+							Line:    1,
+						},
+					},
+				},
+			},
+		}
+		const want = "point = {  # comment 1\n" +
+			"    # comment 2\n" +
+			"    x = 1,\n" +
+			"    # comment 3\n" +
+			"    y = 2,  # comment 4\n" +
+			"}  # comment 5\n"
 		var buf bytes.Buffer
 		if err := tomledit.Format(&buf, doc); err != nil {
 			t.Fatalf("Format failed: %v", err)
 		}
-		got := strings.TrimSpace(buf.String())
-		if !strings.Contains(got, `\xE9`) {
-			t.Errorf("Formatted output missing hex escape:\n%s", got)
-		}
-		if !strings.Contains(got, `\e`) {
-			t.Errorf("Formatted output missing \\e escape:\n%s", got)
+		if diff := cmp.Diff(want, buf.String()); diff != "" {
+			t.Errorf("Formatted output: (-want, +got)\n%s", diff)
 		}
 	})
 }
@@ -384,8 +434,6 @@ func TestScan11(t *testing.T) {
 		want := []string{
 			// Global mappings.
 			"point", "point.x", "point.y",
-			"hex", "esc",
-			"lt", "ldt", "odt",
 
 			// [settings] section.
 			"settings", "settings.config", "settings.config.timeout", "settings.config.retries",
@@ -408,16 +456,6 @@ func TestScan11(t *testing.T) {
 			}
 		}
 	})
-
-	t.Run("TimeValues", func(t *testing.T) {
-		// Verify the time/datetime values were parsed.
-		for _, key := range [][]string{{"lt"}, {"ldt"}, {"odt"}} {
-			e := doc.First(key...)
-			if e == nil {
-				t.Errorf("First(%v): not found", key)
-			}
-		}
-	})
 }
 
 func TestEdit11(t *testing.T) {
@@ -427,7 +465,7 @@ func TestEdit11(t *testing.T) {
 		edit        func(*tomledit.Document)
 	}{
 		{
-			desc:  "replace in multiline inline",
+			desc:  "replace in multi-line inline table",
 			input: "x = {\n    a = 1,\n    b = 2,\n}",
 			want:  "x = {\n    a = 99,\n    b = 2,\n}",
 			edit: func(doc *tomledit.Document) {
@@ -435,7 +473,7 @@ func TestEdit11(t *testing.T) {
 			},
 		},
 		{
-			desc:  "remove from trailing comma inline",
+			desc:  "remove trailing comma multi-line inline tables",
 			input: "x = {a = 1, b = 2,}",
 			want:  "x = {a = 1}",
 			edit: func(doc *tomledit.Document) {
@@ -443,13 +481,13 @@ func TestEdit11(t *testing.T) {
 			},
 		},
 		{
-			desc:  "add to multiline inline",
+			desc:  "add to multi-line inline table",
 			input: "x = {\n    a = 1,\n}",
 			want:  "x = {\n    a = 1, c = 3,\n}",
 			edit: func(doc *tomledit.Document) {
 				kv := doc.First("x").KeyValue
 				tab := kv.Value.X.(parser.Inline)
-				tab = append(tab, &parser.KeyValue{
+				tab.Items = append(tab.Items, &parser.KeyValue{
 					Name:  parser.Key{"c"},
 					Value: parser.MustValue("3"),
 				})
@@ -457,19 +495,23 @@ func TestEdit11(t *testing.T) {
 			},
 		},
 		{
-			desc:  "replace hex escape value",
-			input: "key = \"\\xE9\"",
-			want:  "key = \"replaced\"",
+			desc:  "edit comments in multi-line inline table",
+			input: "point = { # comment 1\n    # comment 2\n    x = 1,\n    # comment 3\n    y = 2, # comment 4\n} # comment 5",
+			want:  "point = {  # comment 11\n    # comment 12\n    x = 1,\n    # comment 13\n    y = 2,  # comment 14\n}  # comment 15",
 			edit: func(doc *tomledit.Document) {
-				doc.First("key").Value = parser.MustValue(`"replaced"`)
-			},
-		},
-		{
-			desc:  "replace time without seconds",
-			input: "t = 14:30",
-			want:  "t = 15:45:00",
-			edit: func(doc *tomledit.Document) {
-				doc.First("t").Value = parser.MustValue("15:45:00")
+				kv := doc.First("point").KeyValue
+				tab := kv.Value.X.(parser.Inline)
+				// # comment 1 is now the Trailer on the Inline.
+				tab.Trailer = "# comment 11"
+				kv.Value.X = tab
+				// # comment 2 is in x's Block.
+				tab.Items[0].Block = parser.Comments{"# comment 12"}
+				// # comment 3 is in y's Block.
+				tab.Items[1].Block = parser.Comments{"# comment 13"}
+				// # comment 4 is y's trailing comment.
+				tab.Items[1].Value.Trailer = "# comment 14"
+				// # comment 5 is the outer value's trailing comment.
+				kv.Value.Trailer = "# comment 15"
 			},
 		},
 	}

@@ -76,7 +76,7 @@ func (f Formatter) indentItem(item parser.Item, w io.Writer, prefix string) erro
 		fmt.Fprint(w, prefix, t.Name, " = ")
 
 		// N.B. Do not pre-indent the RHS of a key-value mapping.
-		if err := f.indentDatum(t.Value.X, w, prefix); err != nil {
+		if err := f.indentDatum(t.Value.X, w, prefix, t.Value.Line); err != nil {
 			return err
 		}
 
@@ -102,7 +102,7 @@ func (f Formatter) indentArrayItem(item parser.ArrayItem, w io.Writer, prefix st
 	case parser.Value:
 		// N.B. Plain values only occur in arrays, and in that case we handle the
 		// trailing comments separately.
-		return f.indentDatum(t.X, w, prefix)
+		return f.indentDatum(t.X, w, prefix, t.Line)
 
 	default:
 		return fmt.Errorf("invalid array item type %T", item)
@@ -111,12 +111,12 @@ func (f Formatter) indentArrayItem(item parser.ArrayItem, w io.Writer, prefix st
 	return nil
 }
 
-func (f Formatter) indentDatum(datum parser.Datum, w io.Writer, prefix string) error {
+func (f Formatter) indentDatum(datum parser.Datum, w io.Writer, prefix string, valueLine int) error {
 	switch t := datum.(type) {
 	case parser.Array:
 		return f.indentArray(t, w, prefix)
 	case parser.Inline:
-		return f.indentInline(t, w, prefix)
+		return f.indentInline(t, w, prefix, valueLine)
 	}
 	fmt.Fprint(w, prefix, datum.String())
 	return nil
@@ -159,27 +159,78 @@ func (f Formatter) indentArray(array parser.Array, w io.Writer, prefix string) e
 	return nil
 }
 
-func (f Formatter) indentInline(inline parser.Inline, w io.Writer, prefix string) error {
-	if len(inline) == 0 {
+func (f Formatter) indentInline(inline parser.Inline, w io.Writer, prefix string, valueLine int) error {
+	if len(inline.Items) == 0 {
 		fmt.Fprint(w, prefix, "{}")
 		return nil
 	}
 
-	// The key-value mappings in an inline table cannot have their own comments
-	// or newlines at the top level, but may have them inside string literals or
-	// compound values.
+	if shouldIndentInline(inline, valueLine) {
+		inner := prefix + "    "
+		fmt.Fprint(w, "{")
+		if inline.Trailer != "" {
+			fmt.Fprint(w, "  ", parser.CleanTrailer(inline.Trailer))
+		}
+		prevLine := 0
+		for i, elt := range inline.Items {
+			if elt.Line > 0 && elt.Line != prevLine {
+				fmt.Fprint(w, "\n")
+				for _, line := range elt.Block.Clean() {
+					fmt.Fprint(w, inner, line, "\n")
+				}
+				fmt.Fprint(w, inner)
+				prevLine = elt.Line
+			} else {
+				if i > 0 {
+					fmt.Fprint(w, " ")
+				} else {
+					fmt.Fprint(w, "\n")
+					for _, line := range elt.Block.Clean() {
+						fmt.Fprint(w, inner, line, "\n")
+					}
+					fmt.Fprint(w, inner)
+				}
+			}
+			fmt.Fprint(w, elt.Name, " = ")
+			if err := f.indentDatum(elt.Value.X, w, "", elt.Value.Line); err != nil {
+				return err
+			}
+			fmt.Fprint(w, ",")
+			if elt.Value.Trailer != "" {
+				fmt.Fprint(w, "  ", parser.CleanTrailer(elt.Value.Trailer))
+			}
+		}
+		fmt.Fprint(w, "\n", prefix, "}")
+		return nil
+	}
+
 	fmt.Fprint(w, prefix, "{")
-	for i, elt := range inline {
-		fmt.Fprint(w, prefix, elt.Name, " = ")
-		if err := f.indentDatum(elt.Value.X, w, prefix); err != nil {
+	for i, elt := range inline.Items {
+		fmt.Fprint(w, elt.Name, " = ")
+		if err := f.indentDatum(elt.Value.X, w, "", elt.Value.Line); err != nil {
 			return err
 		}
-		if i+1 < len(inline) {
+		if i+1 < len(inline.Items) {
 			fmt.Fprint(w, ", ")
 		}
 	}
-	fmt.Fprint(w, prefix, "}")
+	fmt.Fprint(w, "}")
 	return nil
+}
+
+func shouldIndentInline(inline parser.Inline, valueLine int) bool {
+	if inline.Trailer != "" {
+		return true
+	}
+	for _, kv := range inline.Items {
+		if len(kv.Block) > 0 {
+			return true
+		}
+		if kv.Line > 0 && kv.Line != valueLine {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldIndentArray(array parser.Array) bool {
@@ -203,7 +254,7 @@ func isInteresting(datum parser.Datum) bool {
 	case parser.Array:
 		return len(t) != 0
 	case parser.Inline:
-		return len(t) != 0
+		return len(t.Items) != 0
 	case parser.Token:
 		return t.Type == scanner.MString || t.Type == scanner.MLString
 	default:

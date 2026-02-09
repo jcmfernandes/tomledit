@@ -263,17 +263,20 @@ func (a Array) String() string {
 }
 
 // An Inline represents a (possibly empty) inline table value.
-type Inline []*KeyValue
+type Inline struct {
+	Trailer string // a trailing line-comment after { (empty if none)
+	Items   []*KeyValue
+}
 
 func (Inline) isDatum() {}
 
 func (t Inline) String() string {
-	if len(t) == 0 {
+	if len(t.Items) == 0 {
 		return "{}"
 	}
 
-	elts := make([]string, len(t))
-	for i, elt := range t {
+	elts := make([]string, len(t.Items))
+	for i, elt := range t.Items {
 		elts[i] = elt.String()
 	}
 	return `{` + strings.Join(elts, ", ") + `}`

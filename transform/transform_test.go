@@ -13,6 +13,41 @@ import (
 	"github.com/creachadair/tomledit/transform"
 )
 
+func TestTransformMultilineInline(t *testing.T) {
+	doc, err := tomledit.Parse(strings.NewReader(`
+[config]
+options = {
+    timeout = 30,
+    retries = 3,
+}
+`))
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Rename a key inside the multi-line inline table.
+	p := transform.Plan{
+		{
+			Desc: "Rename key inside multi-line inline table",
+			T: transform.Rename(
+				parser.Key{"config", "options", "timeout"},
+				parser.Key{"deadline"},
+			),
+		},
+	}
+	if err := p.Apply(context.Background(), doc); err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	// Verify the renamed key exists and old key is gone.
+	if e := doc.First("config", "options", "deadline"); e == nil {
+		t.Error("Renamed key not found")
+	}
+	if e := doc.First("config", "options", "timeout"); e != nil {
+		t.Error("Old key still present")
+	}
+}
+
 func TestTransform(t *testing.T) {
 	doc, err := tomledit.Parse(strings.NewReader(`
 # Welcome

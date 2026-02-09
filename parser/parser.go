@@ -225,7 +225,7 @@ func (p *Parser) parseValue() (Value, error) {
 	} else if next == scanner.LBracket {
 		datum, err = p.parseArrayValue()
 	} else if next == scanner.LInline {
-		datum, err = p.parseInlineValue()
+		datum, err = p.parseInlineValue(line)
 	} else {
 		return Value{}, fmt.Errorf("at %s: got %v, wanted value, array, or inline table",
 			p.sc.Location().First, next)
@@ -301,32 +301,62 @@ func (p *Parser) parseArrayValue() (Array, error) {
 	}
 }
 
-// parsesInlineValue parses an inline table. The starting token must be the
-// opening "{" for the table.
-func (p *Parser) parseInlineValue() (Inline, error) {
-	if next, err := p.require(); err != nil {
-		return nil, err
-	} else if next == scanner.RInline {
-		return nil, nil // OK, empty
-	}
-
+// parseInlineValue parses an inline table. The starting token must be the
+// opening "{" for the table. openLine is the line number of the "{" token.
+func (p *Parser) parseInlineValue(openLine int) (Inline, error) {
+	var block []string
 	var result Inline
-	for {
-		kv, err := p.parseInlineKeyValue(p.sc.Token())
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, kv)
+	var itemLine int
+	var wantComma bool
 
-		// Unlike arrays, inline tables do not permit trailing commas.
-		if next, err := p.require(scanner.Comma, scanner.RInline); err != nil {
-			return nil, err
-		} else if next == scanner.RInline {
-			return result, nil
-		} else if _, err := p.require(); err != nil {
-			return nil, err
+	for {
+		next, err := p.require()
+		if err == io.EOF {
+			return Inline{}, fmt.Errorf("at %v: unclosed inline table", p.sc.Location().First)
+		} else if err != nil {
+			return Inline{}, err
 		}
-		// Reaching here, we saw a comma; go for another value.
+		switch next {
+		case scanner.RInline:
+			return result, nil
+
+		case scanner.Comment:
+			// If no items parsed yet and comment is on the same line as the
+			// opening brace, store as the open comment.
+			if line := p.sc.Location().First.Line; len(result.Items) == 0 && line == openLine {
+				result.Trailer = string(p.sc.Text())
+			} else if len(result.Items) > 0 && line == itemLine {
+				// Same-line comment attaches as trailer on the preceding item.
+				last := result.Items[len(result.Items)-1]
+				last.Value.Trailer = string(p.sc.Text())
+			} else {
+				block = append(block, string(p.sc.Text()))
+			}
+
+		case scanner.Newline:
+			continue
+
+		case scanner.Comma:
+			if !wantComma {
+				return Inline{}, fmt.Errorf("at %v: unexpected %v", p.sc.Location().First, scanner.Comma)
+			}
+			wantComma = false
+
+		default:
+			if wantComma {
+				return Inline{}, fmt.Errorf("at %v: got %v, want %v",
+					p.sc.Location().First, next, scanner.Comma)
+			}
+			kv, err := p.parseInlineKeyValue(next)
+			if err != nil {
+				return Inline{}, err
+			}
+			kv.Block = Comments(block)
+			block = nil
+			itemLine = p.sc.Location().Last.Line
+			wantComma = true
+			result.Items = append(result.Items, kv)
+		}
 	}
 }
 

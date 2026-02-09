@@ -231,7 +231,7 @@ func scanInline(root parser.Key, s *Section, par *parser.Datum, f func(parser.Ke
 	if !ok {
 		return true
 	}
-	for _, kv := range inline {
+	for _, kv := range inline.Items {
 		key := append(root, kv.Name...)
 		if !f(key, &Entry{Section: s, KeyValue: kv, parent: par}) {
 			return false
@@ -299,9 +299,10 @@ func (e *Entry) Remove() bool {
 
 	case *parser.Datum:
 		inline := (*t).(parser.Inline)
-		for i, kv := range inline {
+		for i, kv := range inline.Items {
 			if kv == e.KeyValue {
-				*t = append(inline[:i], inline[i+1:]...)
+				inline.Items = append(inline.Items[:i], inline.Items[i+1:]...)
+				*t = inline
 				e.parent = nil
 				return true
 			}
@@ -319,8 +320,10 @@ func (e Entry) IsMapping() bool { return e.KeyValue != nil }
 // IsInline reports whether e is inside an inline table.
 func (e Entry) IsInline() bool {
 	if e.KeyValue != nil {
-		_, ok := e.parent.(*parser.Inline)
-		return ok
+		if p, ok := e.parent.(*parser.Datum); ok {
+			_, ok = (*p).(parser.Inline)
+			return ok
+		}
 	}
 	return false
 }

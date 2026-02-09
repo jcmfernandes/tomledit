@@ -81,6 +81,17 @@ func TestItems(t *testing.T) {
 			{keyValueType, `"string thing" = ["ding", "ding"]`},
 		}},
 
+		// TOML 1.1: Multi-line inline tables.
+		{"x = {\n  a = 1,\n  b = 2,\n}\n", []result{{keyValueType, `x = {a = 1, b = 2}`}}},
+
+		// TOML 1.1: Multi-line inline tables with comments.
+		{"point = { # comment 1\n    # comment 2\n    x = 1,\n    # comment 3\n    y = 2, # comment 4\n} # comment 5\n", []result{
+			{keyValueType, `point = {x = 1, y = 2}`},
+		}},
+
+		// TOML 1.1: Trailing commas in inline tables.
+		{"x = {a = 1, b = 2,}\n", []result{{keyValueType, `x = {a = 1, b = 2}`}}},
+
 		// Headings.
 		{`[ a . b . c ]`, []result{{headingType, `[a.b.c]`}}},
 		{`[ a . '' . c ]`, []result{{headingType, `[a."".c]`}}},
@@ -304,6 +315,15 @@ func TestParseValue(t *testing.T) {
 		{"[0,\n1,\n2\n] # bienvenue\n", "[0, 1, 2]", "# bienvenue"},
 		{"{  } # welcome", "{}", "# welcome"},
 		{"{ all . 'we' . are = 42 }", "{all.we.are = 42}", ""},
+
+		// TOML 1.1: multi-line inline table with trailing comma.
+		{"{\n  a = 1,\n  b = 2,\n}\n", "{a = 1, b = 2}", ""},
+
+		// TOML 1.1: trailing comma in inline table.
+		{"{a = 1, b = 2,} # ok\n", "{a = 1, b = 2}", "# ok"},
+
+		// TOML 1.1: multi-line inline table with comments.
+		{"{ # c1\n  # c2\n  x = 1,\n  # c3\n  y = 2, # c4\n} # c5\n", "{x = 1, y = 2}", "# c5"},
 	}
 
 	for _, test := range tests {
@@ -319,6 +339,50 @@ func TestParseValue(t *testing.T) {
 		if v.Trailer != test.comment {
 			t.Errorf("ParseValue(%#q): got comment %q, want %q", test.input, v.Trailer, test.comment)
 		}
+	}
+}
+
+func TestInlineComments(t *testing.T) {
+	const input = "{ # c1\n    # c2\n    x = 1,\n    # c3\n    y = 2, # c4\n}"
+	v, err := parser.ParseValue(input)
+	if err != nil {
+		t.Fatalf("ParseValue(%#q): %v", input, err)
+	}
+	inline, ok := v.X.(parser.Inline)
+	if !ok {
+		t.Fatalf("ParseValue(%#q): got %T, want Inline", input, v.X)
+	}
+	if len(inline.Items) != 2 {
+		t.Fatalf("got %d entries, want 2", len(inline.Items))
+	}
+
+	// "# c1" should be captured as the Trailer on the Inline.
+	if inline.Trailer != "# c1" {
+		t.Errorf("OpenComment: got %q, want %q", inline.Trailer, "# c1")
+	}
+
+	// x = 1: block should contain "# c2" only, no trailer.
+	xKV := inline.Items[0]
+	if got := xKV.Name.String(); got != "x" {
+		t.Errorf("entry 0: got name %q, want %q", got, "x")
+	}
+	if len(xKV.Block) != 1 || xKV.Block[0] != "# c2" {
+		t.Errorf("entry 0 block: got %v, want [# c2]", xKV.Block)
+	}
+	if xKV.Value.Trailer != "" {
+		t.Errorf("entry 0 trailer: got %q, want empty", xKV.Value.Trailer)
+	}
+
+	// y = 2: block should contain "# c3", trailer should be "# c4".
+	yKV := inline.Items[1]
+	if got := yKV.Name.String(); got != "y" {
+		t.Errorf("entry 1: got name %q, want %q", got, "y")
+	}
+	if len(yKV.Block) != 1 {
+		t.Errorf("entry 1 block: got %d comments, want 1: %v", len(yKV.Block), yKV.Block)
+	}
+	if yKV.Value.Trailer != "# c4" {
+		t.Errorf("entry 1 trailer: got %q, want %q", yKV.Value.Trailer, "# c4")
 	}
 }
 

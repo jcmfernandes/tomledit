@@ -89,7 +89,8 @@ func MoveKey(oldKey, rootKey, newKey parser.Key) Func {
 			dst.Items = append(dst.Items, src.KeyValue)
 		} else if dst.IsInline() {
 			v := dst.Value.X.(parser.Inline)
-			dst.Value.X = append(v, src.KeyValue)
+			v.Items = append(v.Items, src.KeyValue)
+			dst.Value.X = v
 		} else {
 			return fmt.Errorf("target %q is not a table", newKey)
 		}
